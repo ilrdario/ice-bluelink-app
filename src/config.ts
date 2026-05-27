@@ -74,7 +74,7 @@ export interface Config {
   widgetConfig: WidgetConfig
   customClimates: CustomClimateConfig[]
   hideDefaultClimates: boolean
-  chargeLimits: ChargeLimitConfig[]
+  chargeLimits?: ChargeLimitConfig[]
 }
 
 export interface WidgetConfig {
@@ -107,7 +107,7 @@ export interface FlattenedConfig {
   widgetConfig: WidgetConfig
   customClimates: CustomClimateConfig[]
   hideDefaultClimates: boolean
-  chargeLimits: ChargeLimitConfig[]
+  chargeLimits?: ChargeLimitConfig[]
 }
 
 // const SUPPORTED_REGIONS = ['canada']

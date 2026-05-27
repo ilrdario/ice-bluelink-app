@@ -237,6 +237,23 @@ export class BluelinkCanada extends Bluelink {
     throw Error(error)
   }
 
+  private isEngineRunning(status: any): boolean {
+    // 1. Direct Engine Flag: The ECU's primary report of engine state.
+    // This is the most reliable "Physical" source.
+    const engineOn = status.engine === true
+
+    // 2. Remote Ignition Flag: Used when the engine is running via a
+    // Bluelink remote start session.
+    const remoteOn = status.remoteIgnition === true
+
+    // 3. Ignition Status: Some models/firmware versions use this as
+    // a fallback for "Key-ON" state even if the engine isn't turning.
+    const ignitionOn = status.ignitionStatus === true || status.engineStatus === 'ON'
+
+    // Combine these into a single "Running" state
+    return engineOn || remoteOn || ignitionOn
+  }
+
   protected returnCarStatus(
     status: any,
     forceUpdate: boolean,
@@ -291,14 +308,13 @@ export class BluelinkCanada extends Bluelink {
             : 0,
       locked: status.doorLock,
       climate: status.airCtrlOn,
-      engineRunning: Boolean(status.engine || status.remoteIgnition),
+      engineRunning: this.isEngineRunning(status),
       soc: status.evStatus.batteryStatus,
-      fuelLevel:
-        Number.isFinite(fuelLevelFromStatus)
-          ? fuelLevelFromStatus
-          : status.evStatus.drvDistance[0].rangeByFuel.gasModeRange.value > 0
-            ? this.cache?.status.fuelLevel || 0
-            : undefined,
+      fuelLevel: Number.isFinite(fuelLevelFromStatus)
+        ? fuelLevelFromStatus
+        : status.evStatus.drvDistance[0].rangeByFuel.gasModeRange.value > 0
+          ? this.cache?.status.fuelLevel || 0
+          : undefined,
       fuelLow: Boolean(status.lowFuelLight),
       twelveSoc: status.battery && status.battery.batSoc ? status.battery.batSoc : 0,
       odometer: odometer ? odometer : this.cache ? this.cache.status.odometer : 0,

@@ -118,14 +118,7 @@ export async function createApp(config: Config, bl: Bluelink) {
       twelveSoc: cachedStatus.status.twelveSoc,
       appIcon: appIcon,
     },
-    render: () => [
-      pageTitle(),
-      fuelStatus(bl),
-      pageImage(bl),
-      pageIcons(bl),
-      Spacer({ rowHeight: 150 }),
-      settings(bl),
-    ],
+    render: () => [pageTitle(), fuelStatus(bl), pageImage(bl), pageIcons(bl), Spacer({ rowHeight: 150 }), settings(bl)],
   })
 }
 
@@ -242,19 +235,7 @@ const fuelStatus = connect(({ state: { fuelLevel, fuelLow, range } }, bl: Blueli
 })
 
 const pageIcons = connect(
-  (
-    {
-      state: {
-        lastUpdated,
-        isClimateOn,
-        engineRunning,
-        locked,
-        updatingActions,
-        twelveSoc,
-      },
-    },
-    bl: Bluelink,
-  ) => {
+  ({ state: { lastUpdated, isClimateOn, engineRunning, locked, updatingActions, twelveSoc } }, bl: Bluelink) => {
     const lastSeen = new Date(lastUpdated)
     const engineText = engineRunning ? 'Engine Running' : 'Engine Off'
     const engineIcon = engineRunning ? 'engine-on' : 'engine-off'

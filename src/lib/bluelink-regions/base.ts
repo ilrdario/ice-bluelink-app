@@ -299,16 +299,12 @@ export class Bluelink {
     const cachedStatus = this.cache?.status
     const fuelLevelFromStatus = Number(status.fuelLevel)
     const rangeFromStatus = Number(status.dte?.value)
-    const fuelLevel =
-      Number.isFinite(fuelLevelFromStatus)
-        ? fuelLevelFromStatus
-        : typeof cachedStatus?.fuelLevel === 'number'
-          ? cachedStatus.fuelLevel
-          : cachedStatus?.soc || 0
-    const range =
-      Number.isFinite(rangeFromStatus) && rangeFromStatus > 0
-        ? rangeFromStatus
-        : cachedStatus?.range || 0
+    const fuelLevel = Number.isFinite(fuelLevelFromStatus)
+      ? fuelLevelFromStatus
+      : typeof cachedStatus?.fuelLevel === 'number'
+        ? cachedStatus.fuelLevel
+        : cachedStatus?.soc || 0
+    const range = Number.isFinite(rangeFromStatus) && rangeFromStatus > 0 ? rangeFromStatus : cachedStatus?.range || 0
 
     return {
       lastStatusCheck: Date.now(),
