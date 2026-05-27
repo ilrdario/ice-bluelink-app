@@ -1,7 +1,7 @@
 import {
   getTintedIconAsync,
-  getBatteryPercentColor,
-  calculateBatteryIcon,
+  getFuelPercentColor,
+  calculateFuelIcon,
   getChargingIcon,
   dateStringOptions,
   getChargeCompletionString,
@@ -131,10 +131,12 @@ async function refreshDataForWidget(bl: Bluelink, config: Config): Promise<Widge
   let lastRemoteCheck = status.status.lastRemoteStatusCheck
   lastRemoteCheck = lastRemoteCheck > cache.lastRemoteRefresh ? lastRemoteCheck : cache.lastRemoteRefresh
 
+  const isVehicleActive = status.status.isCharging || Boolean(status.status.engineRunning)
+
   // LOGIC for refresh within widget
   // 1.Force refresh if user opted in via config AND last remote check is older than:
-  //   - DEFAULT_REMOTE_REFRESH_INTERVAL if NOT charging
-  //   - DEFAULT_CHARGING_REMOTE_REFRESH_INTERVAL if charging
+  //   - DEFAULT_REMOTE_REFRESH_INTERVAL if inactive
+  //   - DEFAULT_CHARGING_REMOTE_REFRESH_INTERVAL if charging or remote-started
   // 2. Normal refresh if not #1
   // The time intervals vary based on day/night - with day being more frequent
 
@@ -149,14 +151,14 @@ async function refreshDataForWidget(bl: Bluelink, config: Config): Promise<Widge
     )
 
   const chargingAndOverRemoteRefreshInterval =
-    status.status.isCharging && lastRemoteCheck + DEFAULT_CHARGING_REMOTE_REFRESH_INTERVAL < currentTimestamp
+    isVehicleActive && lastRemoteCheck + DEFAULT_CHARGING_REMOTE_REFRESH_INTERVAL < currentTimestamp
 
   const notChargingAndOverRemoteRefreshInterval =
-    !status.status.isCharging && lastRemoteCheck + DEFAULT_REMOTE_REFRESH_INTERVAL < currentTimestamp
+    !isVehicleActive && lastRemoteCheck + DEFAULT_REMOTE_REFRESH_INTERVAL < currentTimestamp
 
   // calculate next remote check - reset if calculated value is in the past
   // if charging ends before next remote check use charge end + 10 minutes
-  const remoteRefreshInterval = status.status.isCharging
+  const remoteRefreshInterval = isVehicleActive
     ? DEFAULT_CHARGING_REMOTE_REFRESH_INTERVAL
     : DEFAULT_REMOTE_REFRESH_INTERVAL
   let nextRemoteRefreshTime = lastRemoteCheck + remoteRefreshInterval
@@ -310,7 +312,7 @@ export async function createMediumWidget(config: Config, bl: Bluelink) {
   // set status from BL status response
   const isCharging = status.status.isCharging
   const isPluggedIn = status.status.isPluggedIn
-  const batteryPercent = status.status.soc
+  const batteryPercent = status.status.fuelLevel ?? status.status.soc
   const remainingChargingTime = status.status.remainingChargeTimeMins
   const chargingKw = getChargingPowerString(status.status.chargingPower)
   const odometer =
@@ -325,7 +327,7 @@ export async function createMediumWidget(config: Config, bl: Bluelink) {
   const batteryPercentStack = batteryInfoStack.addStack()
   batteryPercentStack.addSpacer()
   batteryPercentStack.centerAlignContent()
-  const image = await getTintedIconAsync(calculateBatteryIcon(batteryPercent))
+  const image = await getTintedIconAsync(calculateFuelIcon(batteryPercent))
   const batterySymbolElement = batteryPercentStack.addImage(image)
   batterySymbolElement.imageSize = new Size(40, 40)
   const chargingIcon = getChargingIcon(isCharging, isPluggedIn, true)
@@ -337,7 +339,7 @@ export async function createMediumWidget(config: Config, bl: Bluelink) {
   batteryPercentStack.addSpacer(5)
 
   const batteryPercentText = batteryPercentStack.addText(`${batteryPercent.toString()}%`)
-  batteryPercentText.textColor = getBatteryPercentColor(status.status.soc)
+  batteryPercentText.textColor = getFuelPercentColor(batteryPercent)
   batteryPercentText.font = Font.mediumSystemFont(20)
 
   if (isCharging) {
@@ -454,7 +456,7 @@ export async function createSmallWidget(config: Config, bl: Bluelink) {
   // set status from BL status response
   const isCharging = status.status.isCharging
   const isPluggedIn = status.status.isPluggedIn
-  const batteryPercent = status.status.soc
+  const batteryPercent = status.status.fuelLevel ?? status.status.soc
   const remainingChargingTime = status.status.remainingChargeTimeMins
   const chargingKw = getChargingPowerString(status.status.chargingPower)
   const lastSeen = new Date(status.status.lastRemoteStatusCheck)
@@ -463,7 +465,7 @@ export async function createSmallWidget(config: Config, bl: Bluelink) {
   const batteryPercentStack = batteryInfoStack.addStack()
   batteryPercentStack.addSpacer()
   batteryPercentStack.centerAlignContent()
-  const image = await getTintedIconAsync(calculateBatteryIcon(batteryPercent))
+  const image = await getTintedIconAsync(calculateFuelIcon(batteryPercent))
   const batterySymbolElement = batteryPercentStack.addImage(image)
   batterySymbolElement.imageSize = new Size(40, 40)
   const chargingIcon = getChargingIcon(isCharging, isPluggedIn, true)
@@ -475,7 +477,7 @@ export async function createSmallWidget(config: Config, bl: Bluelink) {
   // batteryPercentStack.addSpacer(5)
 
   const batteryPercentText = batteryPercentStack.addText(`${batteryPercent.toString()}%`)
-  batteryPercentText.textColor = getBatteryPercentColor(status.status.soc)
+  batteryPercentText.textColor = getFuelPercentColor(batteryPercent)
   batteryPercentText.font = Font.mediumSystemFont(20)
 
   if (isCharging) {
@@ -528,9 +530,10 @@ export async function createHomeScreenCircleWidget(config: Config, bl: Bluelink)
 
   const widget = new ListWidget()
   widget.refreshAfterDate = refresh.nextRefresh
+  const batteryPercent = status.status.fuelLevel ?? status.status.soc
 
-  const progressStack = await progressCircle(widget, status.status.soc)
-  const mainIcon = status.status.isCharging ? SFSymbol.named('bolt.car') : SFSymbol.named('car.fill')
+  const progressStack = await progressCircle(widget, batteryPercent)
+  const mainIcon = status.status.engineRunning ? SFSymbol.named('car.fill') : SFSymbol.named('car')
   const wmainIcon = progressStack.addImage(mainIcon.image)
   wmainIcon.imageSize = new Size(36, 36)
   wmainIcon.tintColor = new Color('#ffffff')
@@ -549,9 +552,10 @@ export async function createHomeScreenRectangleWidget(config: Config, bl: Blueli
   // widgetStack.addSpacer(5)
   widgetStack.layoutVertically()
   const mainStack = widgetStack.addStack()
+  const batteryPercent = status.status.fuelLevel ?? status.status.soc
 
-  const iconStack = await progressCircle(mainStack, status.status.soc)
-  const mainIcon = status.status.isCharging ? SFSymbol.named('bolt.car') : SFSymbol.named('car.fill')
+  const iconStack = await progressCircle(mainStack, batteryPercent)
+  const mainIcon = status.status.engineRunning ? SFSymbol.named('car.fill') : SFSymbol.named('car')
   const wmainIcon = iconStack.addImage(mainIcon.image)
   wmainIcon.imageSize = new Size(36, 36)
   wmainIcon.tintColor = new Color('#ffffff')
@@ -573,7 +577,6 @@ export async function createHomeScreenRectangleWidget(config: Config, bl: Blueli
   // set status from BL status response
   const isCharging = status.status.isCharging
   const isPluggedIn = status.status.isPluggedIn
-  const batteryPercent = status.status.soc
   const remainingChargingTime = status.status.remainingChargeTimeMins
   const lastSeen = new Date(status.status.lastRemoteStatusCheck)
 
@@ -591,7 +594,7 @@ export async function createHomeScreenRectangleWidget(config: Config, bl: Blueli
 
   batteryPercentStack.addSpacer(3)
   const batteryPercentText = batteryPercentStack.addText(`${batteryPercent.toString()}%`)
-  batteryPercentText.textColor = getBatteryPercentColor(status.status.soc)
+  batteryPercentText.textColor = getFuelPercentColor(batteryPercent)
   batteryPercentText.font = Font.boldSystemFont(15)
 
   if (isCharging) {
@@ -624,7 +627,7 @@ export async function createHomeScreenInlineWidget(config: Config, bl: Bluelink)
 
   const isCharging = status.status.isCharging
   const isPluggedIn = status.status.isPluggedIn
-  const batteryPercent = status.status.soc
+  const batteryPercent = status.status.fuelLevel ?? status.status.soc
   const remainingChargingTime = status.status.remainingChargeTimeMins
   const lastSeen = new Date(status.status.lastRemoteStatusCheck)
 

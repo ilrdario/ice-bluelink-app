@@ -46,9 +46,41 @@ const icons: Record<string, icon> = {
     iconName: 'battery.100percent',
     color: Color.green(),
   },
+  'fuel.0': {
+    iconName: 'fuelpump.fill',
+    color: Color.red(),
+  },
+  'fuel.25': {
+    iconName: 'fuelpump.fill',
+    color: Color.orange(),
+  },
+  'fuel.50': {
+    iconName: 'fuelpump.fill',
+    color: Color.green(),
+  },
+  'fuel.75': {
+    iconName: 'fuelpump.fill',
+    color: Color.green(),
+  },
+  'fuel.100': {
+    iconName: 'fuelpump.fill',
+    color: Color.green(),
+  },
+  'fuel-low': {
+    iconName: 'exclamationmark.triangle.fill',
+    color: Color.orange(),
+  },
   charging: {
     iconName: 'bolt.fill',
     color: Color.green(),
+  },
+  'engine-on': {
+    iconName: 'car.fill',
+    color: Color.green(),
+  },
+  'engine-off': {
+    iconName: 'car',
+    color: Color.dynamic(Color.black(), Color.white()),
   },
   odometer: {
     iconName: 'shuffle',
@@ -169,6 +201,10 @@ export function getBatteryPercentColor(batteryPercent: number): Color {
   return Color.red()
 }
 
+export function getFuelPercentColor(fuelPercent: number): Color {
+  return getBatteryPercentColor(fuelPercent)
+}
+
 export async function loadTintedIcons(): Promise<void> {
   const loading: Promise<{ name: string; image: Image }>[] = []
   for (const [key, value] of Object.entries(icons)) {
@@ -238,6 +274,20 @@ export function calculateBatteryIcon(batteryPercent: number): string {
     percentRounded = 25
   }
   return `battery.${percentRounded}${colorExtra}`
+}
+
+export function calculateFuelIcon(fuelPercent: number): string {
+  let percentRounded = 0
+  if (fuelPercent > 90) {
+    percentRounded = 100
+  } else if (fuelPercent >= 65) {
+    percentRounded = 75
+  } else if (fuelPercent >= 35) {
+    percentRounded = 50
+  } else if (fuelPercent >= 15) {
+    percentRounded = 25
+  }
+  return `fuel.${percentRounded}`
 }
 
 export async function tintSFSymbol(name: string, image: Image, color: Color, rotateDegree?: number) {

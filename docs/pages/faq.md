@@ -38,7 +38,7 @@ See the [Regions](./region.md) page for supported regions.
 
 ### Are ICE cars supported?
 
-No not yet. This app was written specifically to support Hyundai and Kia E-GMP EVs. I have been asked to support ICE vehicles, and its something I can considering adding support for. If you desire this feature, let me know by adding or commenting on an existing [Github Issue](https://github.com/andyfase/egmp-bluelink-scriptable/issues) 
+Yes. The app now maps Canadian Bluelink ICE status fields such as fuel level, estimated fuel range, engine state, climate, locks, and location into the app and widgets.
 
 ### I entered my credentials incorrectly and the app wont open / does nothing
 

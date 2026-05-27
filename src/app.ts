@@ -1,5 +1,5 @@
 import { Config, getConfig, STANDARD_CLIMATE_OPTIONS } from 'config'
-import { Bluelink, Status, ClimateRequest, ChargeLimit } from './lib/bluelink-regions/base'
+import { Bluelink, Status, ClimateRequest } from './lib/bluelink-regions/base'
 import { getTable, Div, P, Img, quickOptions, DivChild, Spacer, destructiveConfirm } from 'lib/scriptable-utils'
 import {
   loadConfigScreen,
@@ -19,11 +19,8 @@ import {
   loadTintedIcons,
   getTintedIcon,
   getAngledTintedIconAsync,
-  calculateBatteryIcon,
-  getChargingIcon,
+  calculateFuelIcon,
   dateStringOptions,
-  getChargeCompletionString,
-  getChargingPowerString,
 } from 'lib/util'
 
 interface updatingActions {
@@ -39,11 +36,7 @@ interface updatingActions {
     image: Image
     text: string
   }
-  charge?: {
-    image: Image
-    text: string
-  }
-  chargeLimit?: {
+  engine?: {
     image: Image
     text: string
   }
@@ -56,19 +49,16 @@ const logger = getAppLogger()
 const { present, connect, setState } = getTable<{
   name: string
   odometer: number
-  soc: number
-  isCharging: boolean
-  isPluggedIn: boolean
-  remainingChargeTimeMins: number
+  fuelLevel: number
+  fuelLow: boolean
   range: number
   locked: boolean
   isClimateOn: boolean
-  chargingPower: number
+  engineRunning: boolean
   lastUpdated: number
   twelveSoc: number
   updatingActions: updatingActions | undefined
   appIcon: Image
-  chargeLimit: ChargeLimit | undefined
 }>({
   name: 'Testing',
 })
@@ -117,23 +107,20 @@ export async function createApp(config: Config, bl: Bluelink) {
     defaultState: {
       name: cachedStatus.car.nickName || `${cachedStatus.car.modelName}`,
       odometer: cachedStatus.status.odometer,
-      soc: cachedStatus.status.soc,
-      isCharging: cachedStatus.status.isCharging,
-      isPluggedIn: cachedStatus.status.isPluggedIn,
-      remainingChargeTimeMins: cachedStatus.status.remainingChargeTimeMins,
+      fuelLevel: cachedStatus.status.fuelLevel ?? cachedStatus.status.soc,
+      fuelLow: cachedStatus.status.fuelLow ?? false,
       range: cachedStatus.status.range,
       locked: cachedStatus.status.locked,
       isClimateOn: cachedStatus.status.climate,
-      chargingPower: cachedStatus.status.chargingPower,
+      engineRunning: cachedStatus.status.engineRunning ?? cachedStatus.status.climate,
       lastUpdated: cachedStatus.status.lastRemoteStatusCheck,
       updatingActions: undefined,
       twelveSoc: cachedStatus.status.twelveSoc,
       appIcon: appIcon,
-      chargeLimit: cachedStatus.status.chargeLimit,
     },
     render: () => [
       pageTitle(),
-      batteryStatus(bl),
+      fuelStatus(bl),
       pageImage(bl),
       pageIcons(bl),
       Spacer({ rowHeight: 150 }),
@@ -228,25 +215,24 @@ const settings = (bl: Bluelink) => {
   )
 }
 
-const batteryStatus = connect(({ state: { soc, range, isCharging, isPluggedIn } }, bl: Bluelink) => {
-  const chargingIcon = getChargingIcon(isCharging, isPluggedIn)
+const fuelStatus = connect(({ state: { fuelLevel, fuelLow, range } }, bl: Bluelink) => {
   const icons: DivChild[] = []
   icons.push(
-    Img(getTintedIcon(calculateBatteryIcon(soc)), {
+    Img(getTintedIcon(calculateFuelIcon(fuelLevel)), {
       align: 'left',
       width: '18%',
     }),
   )
-  if (chargingIcon) {
+  if (fuelLow) {
     icons.push(
-      Img(getTintedIcon(chargingIcon), {
+      Img(getTintedIcon('fuel-low'), {
         align: 'left',
       }),
     )
   }
   return Div(
     icons.concat([
-      P(`${soc.toString()}% (~ ${range} ${bl.getDistanceUnit()})`, {
+      P(`${fuelLevel.toString()}% fuel (~ ${range} ${bl.getDistanceUnit()})`, {
         align: 'left',
         fontSize: 22,
         width: '90%',
@@ -259,45 +245,19 @@ const pageIcons = connect(
   (
     {
       state: {
-        isCharging,
         lastUpdated,
-        remainingChargeTimeMins,
-        chargingPower,
         isClimateOn,
+        engineRunning,
         locked,
         updatingActions,
         twelveSoc,
-        chargeLimit,
       },
     },
     bl: Bluelink,
   ) => {
     const lastSeen = new Date(lastUpdated)
-    const batteryIcon = isCharging ? 'charging' : 'not-charging'
-    const batteryText = 'Not Charging'
-    const chargingPowerText = getChargingPowerString(chargingPower)
-    let chargingPowerTextRowPercentage = '25%'
-
-    // annoying but impacts UI fairly significantly.
-    if (chargingPowerText.length <= 4)
-      chargingPowerTextRowPercentage = '15%' // '? kw'
-    else if (chargingPowerText.length <= 6)
-      chargingPowerTextRowPercentage = '18%' // '1.2 kw'
-    else if (chargingPowerText.length <= 7)
-      chargingPowerTextRowPercentage = '21%' // '10.5 kw'
-    else if (chargingPowerText.length <= 8) chargingPowerTextRowPercentage = '25%' // '222.1 kw'
-
-    const chargingRow: DivChild[] = []
-    if (updatingActions && updatingActions.charge) {
-      chargingRow.push(P(updatingActions.charge.text, { align: 'left', width: '70%', color: Color.orange() }))
-    } else if (isCharging) {
-      // @ts-ignore
-      chargingRow.push(P(chargingPowerText, { align: 'left', width: chargingPowerTextRowPercentage }))
-      chargingRow.push(Img(getTintedIcon('charging-complete'), { align: 'left', width: '10%' }))
-      chargingRow.push(P(`${getChargeCompletionString(lastSeen, remainingChargeTimeMins)}`, { align: 'left' }))
-    } else {
-      chargingRow.push(P(batteryText, { align: 'left', width: '70%' }))
-    }
+    const engineText = engineRunning ? 'Engine Running' : 'Engine Off'
+    const engineIcon = engineRunning ? 'engine-on' : 'engine-off'
 
     const conditioningText = isClimateOn ? 'Climate On' : 'Climate Off'
     const conditioningIcon = isClimateOn ? 'climate-on' : 'climate-off'
@@ -307,56 +267,63 @@ const pageIcons = connect(
 
     const twelveSocText = twelveSoc > 0 ? `12v battery at ${twelveSoc}%` : '12v battery status unknown'
 
-    // find charge limit name based on current values
-    let chargeLimitName = undefined
-    const config = getConfig()
-    if (chargeLimit && config.chargeLimits) {
-      const matchedLimits = Object.values(config.chargeLimits).filter(
-        (x) => x.acPercent === chargeLimit.acPercent && x.dcPercent === chargeLimit.dcPercent,
-      )
-      if (matchedLimits.length > 0) chargeLimitName = matchedLimits[0]?.name || undefined
-    }
-    const chargeLimitPercentText = chargeLimit ? `${chargeLimit.acPercent}% / ${chargeLimit.dcPercent}%` : undefined
-    const chargeLimitText = chargeLimitPercentText
-      ? chargeLimitName
-        ? `${chargeLimitName} Charge Limit`
-        : `Charge Limit: ${chargeLimitPercentText}`
-      : 'Set Charge Limit'
-
     return Div([
       Div(
         [
-          ...[
-            Img(updatingActions && updatingActions.charge ? updatingActions.charge.image : getTintedIcon(batteryIcon), {
-              align: 'center',
-              width: '30%',
-            }),
-          ],
-          ...chargingRow,
+          Img(updatingActions && updatingActions.engine ? updatingActions.engine.image : getTintedIcon(engineIcon), {
+            align: 'center',
+          }),
+          P(updatingActions && updatingActions.engine ? updatingActions.engine.text : engineText, {
+            align: 'left',
+            width: '70%',
+            ...(updatingActions && updatingActions.engine && { color: Color.orange() }),
+          }),
         ],
         {
           onTap() {
             if (isUpdating) {
               return
             }
-            quickOptions(['Charge', 'Stop Charging', 'Cancel'], {
-              title: 'Confirm charge action',
+            const optStart = 'Start Engine'
+            const optStop = 'Stop Engine'
+            quickOptions([engineRunning ? optStop : optStart, engineRunning ? optStart : optStop, 'Cancel'], {
+              title: 'Confirm engine action',
               onOptionSelect: (opt) => {
                 if (opt === 'Cancel') return
+                const config = getConfig()
+                const startEngine = opt === optStart
                 doAsyncUpdate({
-                  command: opt === 'Charge' ? 'startCharge' : 'stopCharge',
+                  command: 'climate',
                   bl: bl,
+                  payload: {
+                    enable: startEngine,
+                    frontDefrost: false,
+                    rearDefrost: false,
+                    steering: false,
+                    temp: config.climateTempWarm,
+                    durationMinutes: 15,
+                    ...(startEngine &&
+                      config.climateSeatLevel !== 'Off' && {
+                        seatClimateOption: {
+                          driver: ClimateSeatSettingWarm[config.climateSeatLevel],
+                          passenger: ClimateSeatSettingWarm[config.climateSeatLevel],
+                          rearLeft: 0,
+                          rearRight: 0,
+                        },
+                      }),
+                  } as ClimateRequest,
                   actions: updatingActions,
-                  actionKey: 'charge',
-                  updatingText: opt === 'Charge' ? 'Starting charging ...' : 'Stopping charging ...',
-                  successText: opt === 'Charge' ? 'Car charging started!' : 'Car charging stopped!',
-                  failureText: `Failed to ${opt === 'Charge' ? 'start charging' : 'stop charging'} car!!!`,
+                  actionKey: 'engine',
+                  updatingText: startEngine ? 'Starting engine ...' : 'Stopping engine ...',
+                  successText: startEngine ? 'Engine started!' : 'Engine stopped!',
+                  failureText: `Failed to ${startEngine ? 'start' : 'stop'} engine!!!`,
                   successCallback: (data) => {
                     updateStatus({
                       ...bl.getCachedStatus(),
                       status: {
                         ...data,
-                        isCharging: opt === 'Charge' ? true : false,
+                        engineRunning: startEngine,
+                        climate: startEngine,
                       },
                     } as Status)
                   },
@@ -468,7 +435,8 @@ const pageIcons = connect(
                         ...bl.getCachedStatus(),
                         status: {
                           ...data,
-                          isClimateOn: opt !== 'Off' ? true : false,
+                          climate: opt !== 'Off' ? true : false,
+                          engineRunning: opt !== 'Off' ? true : false,
                         },
                       } as Status)
                     },
@@ -513,58 +481,6 @@ const pageIcons = connect(
                       status: {
                         ...data,
                         locked: opt === 'Lock' ? true : false,
-                      },
-                    } as Status)
-                  },
-                })
-              },
-            })
-          },
-        },
-      ),
-      Div(
-        [
-          Img(
-            updatingActions && updatingActions.chargeLimit
-              ? updatingActions.chargeLimit.image
-              : getTintedIcon('charge-limit'),
-            {
-              align: 'center',
-            },
-          ),
-          P(updatingActions && updatingActions.chargeLimit ? updatingActions.chargeLimit.text : chargeLimitText, {
-            align: 'left',
-            width: '70%',
-            ...(updatingActions && updatingActions.chargeLimit && { color: Color.orange() }),
-          }),
-        ],
-        {
-          onTap() {
-            if (isUpdating) {
-              return
-            }
-            const config = getConfig() // always re-read in case config has been mutated by config screens, and app page is not refreshed
-            const chargeLimits = Object.values(config.chargeLimits).map((x) => x.name)
-            quickOptions(chargeLimits.concat(['Cancel']), {
-              title: 'Confirm charge limit to set',
-              onOptionSelect: (opt) => {
-                if (opt === 'Cancel') return
-                const payload = Object.values(config.chargeLimits).filter((x) => x.name === opt)[0]
-                if (!payload) return
-                doAsyncUpdate({
-                  command: 'chargeLimit',
-                  bl: bl,
-                  payload: payload,
-                  actions: updatingActions,
-                  actionKey: 'chargeLimit',
-                  updatingText: `Setting charge limit ...`,
-                  successText: `Charge limit ${payload.name} set!`,
-                  failureText: `Failed to set charge limit!!!`,
-                  successCallback: (data) => {
-                    updateStatus({
-                      ...bl.getCachedStatus(),
-                      status: {
-                        ...data,
                       },
                     } as Status)
                   },
@@ -659,16 +575,13 @@ function updateStatus(status: Status) {
   setState({
     name: status.car.nickName || `${status.car.modelName}`,
     odometer: status.status.odometer,
-    soc: status.status.soc,
-    isCharging: status.status.isCharging,
-    isPluggedIn: status.status.isPluggedIn,
-    remainingChargeTimeMins: status.status.remainingChargeTimeMins,
+    fuelLevel: status.status.fuelLevel ?? status.status.soc,
+    fuelLow: status.status.fuelLow ?? false,
     range: status.status.range,
     locked: status.status.locked,
     isClimateOn: status.status.climate,
-    chargingPower: status.status.chargingPower,
+    engineRunning: status.status.engineRunning ?? status.status.climate,
     lastUpdated: status.status.lastRemoteStatusCheck,
-    chargeLimit: status.status.chargeLimit || undefined,
     twelveSoc: status.status.twelveSoc,
   })
 }

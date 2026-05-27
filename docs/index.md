@@ -7,7 +7,7 @@ layout: home
 # Hyundai / Kia E-GMP scriptable app for IOS
 {: .fs-8 }
 
-A [scriptable app](https://scriptable.app/) for IOS that allows you to control your Hyundai / Kia electric car using the Bluelink API. 
+A [scriptable app](https://scriptable.app/) for IOS that allows you to control your Hyundai / Kia vehicle using the Bluelink API, with ICE support for vehicles such as the Hyundai Elantra N.
 {: .fs-6 .fw-300 }
 
 
@@ -64,7 +64,7 @@ Features Include:
 
 - Auto-Updating Homescreen and Lockscreen Widgets
 - Fresh and more responsive app UI
-- Single click options for common commands (lock, warm, charge etc) in both app and in IOS Control Center
+- Single click options for common commands (lock, warm, cool, remote start/stop etc) in both app and in IOS Control Center
 - Siri voice support "Hey Siri, Warm the car"
 - Automations via IOS Shortcuts like walk-away lock
 - Unlimited Custom Climate configurations 

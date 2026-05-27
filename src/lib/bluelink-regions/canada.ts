@@ -213,6 +213,14 @@ export class BluelinkCanada extends Bluelink {
       }
       // should set car just in case its not already set
       await this.setCar(vehicle.vehicleId)
+      const engineType =
+        vehicle.fuelKindCode === 'G'
+          ? 'ICE'
+          : vehicle.fuelKindCode === 'E'
+            ? 'EV'
+            : vehicle.fuelKindCode === 'P'
+              ? 'PHEV'
+              : 'UNKNOWN'
       return {
         id: vehicle.vehicleId,
         vin: vehicle.vin,
@@ -221,6 +229,7 @@ export class BluelinkCanada extends Bluelink {
         modelYear: vehicle.modelYear,
         modelColour: vehicle.exteriorColor,
         modelTrim: vehicle.trim,
+        engineType: engineType,
       }
     }
     const error = `Failed to retrieve vehicle list: ${JSON.stringify(resp.json)} request ${JSON.stringify(this.debugLastRequest)}`
@@ -239,6 +248,7 @@ export class BluelinkCanada extends Bluelink {
     const df = new DateFormatter()
     df.dateFormat = 'yyyyMMddHHmmssZ'
     const lastRemoteCheck = df.date(lastRemoteCheckString)
+    const fuelLevelFromStatus = Number(status.fuelLevel)
 
     // For whatever reason sometimes the status will not have the evStatus object
     // deal with that with either cached or zero values
@@ -274,14 +284,22 @@ export class BluelinkCanada extends Bluelink {
       remainingChargeTimeMins: status.evStatus.remainTime2.atc.value,
       // sometimes range back as zero? if so ignore and use cache
       range:
-        status.evStatus.drvDistance[0].rangeByFuel.evModeRange.value > 0
-          ? status.evStatus.drvDistance[0].rangeByFuel.evModeRange.value
+        status.evStatus.drvDistance[0].rangeByFuel.totalAvailableRange.value > 0
+          ? status.evStatus.drvDistance[0].rangeByFuel.totalAvailableRange.value
           : this.cache
             ? this.cache.status.range
             : 0,
       locked: status.doorLock,
       climate: status.airCtrlOn,
+      engineRunning: Boolean(status.engine || status.remoteIgnition),
       soc: status.evStatus.batteryStatus,
+      fuelLevel:
+        Number.isFinite(fuelLevelFromStatus)
+          ? fuelLevelFromStatus
+          : status.evStatus.drvDistance[0].rangeByFuel.gasModeRange.value > 0
+            ? this.cache?.status.fuelLevel || 0
+            : undefined,
+      fuelLow: Boolean(status.lowFuelLight),
       twelveSoc: status.battery && status.battery.batSoc ? status.battery.batSoc : 0,
       odometer: odometer ? odometer : this.cache ? this.cache.status.odometer : 0,
       location: location ? location : this.cache ? this.cache.status.location : undefined,
@@ -314,7 +332,7 @@ export class BluelinkCanada extends Bluelink {
 
     let chargeLimitStatus = undefined
     let locationStatus = undefined
-    if (forceUpdate) chargeLimitStatus = await this.getChargeLimit(id)
+    if (forceUpdate && this.cache.car.engineType === 'EV') chargeLimitStatus = await this.getChargeLimit(id)
     if (location) locationStatus = await this.getLocation(id)
 
     return this.returnCarStatus(
@@ -374,7 +392,7 @@ export class BluelinkCanada extends Bluelink {
       if (resp.json.result.transaction.apiResult === 'C') {
         // update saved cache status
         if (resp.json.result.vehicle) {
-          if (!chargeLimit) chargeLimit = await this.getChargeLimit(id)
+          if (!chargeLimit && this.cache.car.engineType === 'EV') chargeLimit = await this.getChargeLimit(id)
           this.cache.status = this.returnCarStatus(resp.json.result.vehicle, true, undefined, chargeLimit)
           this.saveCache()
         }
@@ -481,33 +499,48 @@ export class BluelinkCanada extends Bluelink {
     // rather than whitelist to detect this we just retry on failure with the new key
     // in the future we can default to the new payload key
     const authCode = await this.getAuthCode()
-    const api = 'evc/rfon'
+    const isIceVehicle = this.cache.car.engineType === 'ICE'
+    const api = isIceVehicle ? 'rmtstrt' : 'evc/rfon'
+    const climateSettings = {
+      airCtrl: 1,
+      defrost: config.frontDefrost,
+      airTemp: {
+        value: this.tempLookup.H[tempIndex],
+        unit: 0,
+        hvacTempType: isIceVehicle ? 0 : 1,
+      },
+      igniOnDuration: config.durationMinutes,
+      heating1: this.getHeatingValue(config.rearDefrost, config.steering),
+      seatHeaterVentCMD: {
+        drvSeatOptCmd: config.seatClimateOption?.driver || 0,
+        astSeatOptCmd: config.seatClimateOption?.passenger || 0,
+        rlSeatOptCmd: config.seatClimateOption?.rearLeft || 0,
+        rrSeatOptCmd: config.seatClimateOption?.rearRight || 0,
+      },
+    }
     const resp = await this.request({
       url: this.apiDomain + api,
       method: 'POST',
-      data: JSON.stringify({
-        pin: this.config.auth.pin,
-        [newPayloadType ? 'remoteControl' : 'hvacInfo']: {
-          airCtrl: 1,
-          defrost: config.frontDefrost,
-          airTemp: {
-            value: this.tempLookup.H[tempIndex],
-            unit: 0,
-            hvacTempType: 1,
-          },
-          igniOnDuration: config.durationMinutes,
-          heating1: this.getHeatingValue(config.rearDefrost, config.steering),
-          ...(config.seatClimateOption &&
-            isNotEmptyObject(config.seatClimateOption) && {
-              seatHeaterVentCMD: {
-                drvSeatOptCmd: config.seatClimateOption.driver,
-                astSeatOptCmd: config.seatClimateOption.passenger,
-                rlSeatOptCmd: config.seatClimateOption.rearLeft,
-                rrSeatOptCmd: config.seatClimateOption.rearRight,
+      data: JSON.stringify(
+        isIceVehicle
+          ? {
+              pin: this.config.auth.pin,
+              setting: {
+                ...climateSettings,
+                ims: 0,
               },
-            }),
-        },
-      }),
+            }
+          : {
+              pin: this.config.auth.pin,
+              [newPayloadType ? 'remoteControl' : 'hvacInfo']: {
+                ...climateSettings,
+                ...(config.seatClimateOption &&
+                  isNotEmptyObject(config.seatClimateOption) && {
+                    seatHeaterVentCMD: climateSettings.seatHeaterVentCMD,
+                  }),
+              },
+            },
+      ),
       headers: {
         Vehicleid: id,
         Pauth: authCode,
@@ -523,13 +556,13 @@ export class BluelinkCanada extends Bluelink {
     if (this.config.debugLogging) this.logger.log(error)
 
     // retry with new payload type if needed
-    if (!newPayloadType) return await this.climateOn(id, config, true)
+    if (!isIceVehicle && !newPayloadType) return await this.climateOn(id, config, true)
     throw Error(error)
   }
 
   protected async climateOff(id: string): Promise<{ isSuccess: boolean; data: BluelinkStatus }> {
     const authCode = await this.getAuthCode()
-    const api = 'evc/rfoff'
+    const api = this.cache.car.engineType === 'ICE' ? 'rmtstp' : 'evc/rfoff'
     const resp = await this.request({
       url: this.apiDomain + api,
       method: 'POST',

@@ -33,6 +33,7 @@ export interface BluelinkCar {
   modelYear: string
   modelTrim?: string
   modelColour?: string
+  engineType?: 'EV' | 'ICE' | 'PHEV' | 'HEV' | 'UNKNOWN'
   odometer?: number
   europeccs2?: number
 }
@@ -47,7 +48,10 @@ export interface BluelinkStatus {
   range: number
   locked: boolean
   climate: boolean
+  engineRunning?: boolean
   soc: number
+  fuelLevel?: number
+  fuelLow?: boolean
   twelveSoc: number
   odometer: number
   chargeLimit?: ChargeLimit
@@ -121,6 +125,8 @@ export interface Location {
 
 const carImageHttpURL = 'https://bluelink.andyfase.com/app-assets/car-images/'
 const carImageMap: Record<string, string> = {
+  elantran: 'elantran',
+  elantra: 'elantran',
   ioniq9: 'ioniq9',
   ioniq5n: 'ioniq5n',
   ioniq5: 'ioniq5',
@@ -290,17 +296,34 @@ export class Bluelink {
     chargeLimit?: ChargeLimit,
     location?: Location,
   ): BluelinkStatus {
+    const cachedStatus = this.cache?.status
+    const fuelLevelFromStatus = Number(status.fuelLevel)
+    const rangeFromStatus = Number(status.dte?.value)
+    const fuelLevel =
+      Number.isFinite(fuelLevelFromStatus)
+        ? fuelLevelFromStatus
+        : typeof cachedStatus?.fuelLevel === 'number'
+          ? cachedStatus.fuelLevel
+          : cachedStatus?.soc || 0
+    const range =
+      Number.isFinite(rangeFromStatus) && rangeFromStatus > 0
+        ? rangeFromStatus
+        : cachedStatus?.range || 0
+
     return {
       lastStatusCheck: Date.now(),
       lastRemoteStatusCheck: forceUpdate ? Date.now() : lastRemoteCheck.getTime(),
-      isCharging: this.cache ? this.cache.status.isCharging : false,
-      isPluggedIn: this.cache ? this.cache.status.isCharging : false,
-      chargingPower: this.cache ? this.cache.status.chargingPower : 0,
-      remainingChargeTimeMins: this.cache ? this.cache.status.remainingChargeTimeMins : 0,
-      range: this.cache ? this.cache.status.range : 0,
-      soc: this.cache ? this.cache.status.soc : 0,
+      isCharging: false,
+      isPluggedIn: false,
+      chargingPower: 0,
+      remainingChargeTimeMins: 0,
+      range: range,
+      soc: fuelLevel,
+      fuelLevel: fuelLevel,
+      fuelLow: Boolean(status.lowFuelLight),
       locked: status.doorLock,
       climate: status.airCtrlOn,
+      engineRunning: Boolean(status.engine || status.remoteIgnition),
       twelveSoc: status.battery && status.battery.batSoc ? status.battery.batSoc : 0,
       odometer: odometer ? odometer : this.cache ? this.cache.status.odometer : 0,
       location: location ? location : this.cache ? this.cache.status.location : undefined,

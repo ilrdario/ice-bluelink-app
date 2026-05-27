@@ -2,13 +2,13 @@
 
 ## What is this?
 
-An alternative Bluelink app to use on Hyundai / Kia E-GMP Electric Cars. Its a [scriptable app](https://scriptable.app/) for IOS that allows you to control your Hyundai / Kia electric car using the Bluelink API. 
+An alternative Bluelink app to use on Hyundai / Kia vehicles, now focused on ICE vehicles such as the Hyundai Elantra N. Its a [scriptable app](https://scriptable.app/) for IOS that allows you to control your car using the Bluelink API.
 
 ## Features
 
 * Auto-Updating Homescreen and Lockscreen Widgets
 * Fresh and more responsive app UI
-* Single click options for common commands (lock, warm, charge etc) in both app and in IOS Control Center
+* Single click options for common commands (lock, warm, cool, remote start/stop etc) in both app and in IOS Control Center
 * Siri voice support "Hey Siri, Warm the car"
 * Automations via IOS Shortcuts like walk-away lock
 * Unlimited Custom Climate configurations 

@@ -1,14 +1,7 @@
-import {
-  Config,
-  CustomClimateConfig,
-  ChargeLimitConfig,
-  ClimateSeatSetting,
-  ClimateSeatSettingCool,
-  ClimateSeatSettingWarm,
-} from 'config'
+import { Config, CustomClimateConfig, ClimateSeatSetting, ClimateSeatSettingCool, ClimateSeatSettingWarm } from 'config'
 import { Logger } from 'lib/logger'
-import { Bluelink, ClimateRequest, ChargeLimit } from 'lib/bluelink-regions/base'
-import { getChargeCompletionString, sleep } from 'lib/util'
+import { Bluelink, ClimateRequest } from 'lib/bluelink-regions/base'
+import { sleep } from 'lib/util'
 
 const SIRI_LOG_FILE = 'egmp-bluelink-siri.log'
 
@@ -22,14 +15,6 @@ export async function processSiriRequest(config: Config, bl: Bluelink, shortcutP
     commands.push({
       words: value.name.split(' ').concat(['climate']),
       function: customClimate,
-      data: value,
-    })
-  }
-
-  for (const value of config.chargeLimits) {
-    commands.push({
-      words: value.name.split(' ').concat(['charge', 'limit']),
-      function: setChargeLimit,
       data: value,
     })
   }
@@ -60,15 +45,10 @@ async function getStatus(bl: Bluelink): Promise<string> {
 
   const carName = status.car.nickName || `${status.car.modelYear}`
 
-  let response = `${carName}'s battery is at ${status.status.soc}% and ${status.status.locked ? 'locked' : 'un-locked'}`
+  const fuelLevel = status.status.fuelLevel ?? status.status.soc
+  let response = `${carName}'s fuel is at ${fuelLevel}% with about ${status.status.range} ${bl.getDistanceUnit()} of range, and it is ${status.status.locked ? 'locked' : 'un-locked'}`
   if (status.status.climate) response += ', and your climate is currently on'
-
-  if (status.status.isCharging) {
-    const chargeCompleteTime = getChargeCompletionString(lastSeen, status.status.remainingChargeTimeMins, 'long')
-    response += `. Also your car is charging at ${status.status.chargingPower}kw and will be finished charging at ${chargeCompleteTime}`
-  } else if (status.status.isPluggedIn) {
-    response += '. Also your car is currently plugged into a charger.'
-  }
+  if (status.status.engineRunning) response += ', and the engine is running'
   const lastSeenShort = lastSeen.toLocaleString(undefined, {
     weekday: 'long',
     hour: 'numeric',
@@ -218,34 +198,46 @@ async function unlock(bl: Bluelink): Promise<string> {
   )
 }
 
-async function startCharge(bl: Bluelink): Promise<string> {
+async function startEngine(bl: Bluelink): Promise<string> {
   const status = bl.getCachedStatus()
+  const config = bl.getConfig()
   return await blRequest(
     bl,
-    'startCharge',
-    `I've issued a request to start charging ${status.car.nickName || `your ${status.car.modelName}`}.`,
-  )
-}
-
-async function setChargeLimit(bl: Bluelink, data: ChargeLimitConfig): Promise<string> {
-  const status = bl.getCachedStatus()
-  return await blRequest(
-    bl,
-    'chargeLimit',
-    `I've issued a request to set charge limit ${data.name} for ${status.car.nickName || `your ${status.car.modelName}`}.`,
+    'climate',
+    `I've issued a request to start ${status.car.nickName || `your ${status.car.modelName}`}.`,
     {
-      acPercent: data.acPercent,
-      dcPercent: data.dcPercent,
-    } as ChargeLimit,
+      enable: true,
+      frontDefrost: false,
+      rearDefrost: false,
+      steering: false,
+      temp: config.climateTempWarm,
+      durationMinutes: 15,
+      ...(config.climateSeatLevel !== 'Off' && {
+        seatClimateOption: {
+          driver: ClimateSeatSettingWarm[config.climateSeatLevel],
+          passenger: ClimateSeatSettingWarm[config.climateSeatLevel],
+          rearLeft: 0,
+          rearRight: 0,
+        },
+      }),
+    } as ClimateRequest,
   )
 }
 
-async function stopCharge(bl: Bluelink): Promise<string> {
+async function stopEngine(bl: Bluelink): Promise<string> {
   const status = bl.getCachedStatus()
   return await blRequest(
     bl,
-    'stopCharge',
-    `I've issued a request to stop charging ${status.car.nickName || `your ${status.car.modelName}`}.`,
+    'climate',
+    `I've issued a request to stop ${status.car.nickName || `your ${status.car.modelName}`}.`,
+    {
+      enable: false,
+      frontDefrost: false,
+      rearDefrost: false,
+      steering: false,
+      temp: bl.getConfig().climateTempCold,
+      durationMinutes: 15,
+    } as ClimateRequest,
   )
 }
 
@@ -306,11 +298,19 @@ const commandMap: commandDetection[] = [
     function: lock,
   },
   {
-    words: ['start', 'charging'],
-    function: startCharge,
+    words: ['start', 'engine'],
+    function: startEngine,
   },
   {
-    words: ['stop', 'charging'],
-    function: stopCharge,
+    words: ['remote', 'start'],
+    function: startEngine,
+  },
+  {
+    words: ['stop', 'engine'],
+    function: stopEngine,
+  },
+  {
+    words: ['remote', 'stop'],
+    function: stopEngine,
   },
 ]

@@ -86,7 +86,7 @@ const pageTitle = connect(() => {
 const appDescription = connect(() => {
   return Div(
     [
-      P('A scriptable app for IOS that allows you to control your Hyundai / Kia electric car using the Bluelink API.', {
+      P('A scriptable app for IOS that allows you to control your Hyundai / Kia vehicle using the Bluelink API.', {
         font: (n) => Font.mediumRoundedSystemFont(n),
         fontSize: 20,
         align: 'left',

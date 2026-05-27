@@ -438,25 +438,6 @@ export async function loadConfigScreen(bl: Bluelink | undefined = undefined) {
         faded: true,
         onClickFunction: loadWidgetConfigScreen,
       },
-      chargeLimits: {
-        type: 'clickable',
-        label: 'Charge Limit Profiles',
-        // charge_limit icon IOS 16 and above
-        customIcon: parseFloat(Device.systemVersion()) >= 16 ? 'charge_limit' : 'charge_limit2',
-        faded: true,
-        onClickFunction: () => {
-          const config = getConfig()
-          const chargeLimitNames = Object.values(config.chargeLimits).map((x) => x.name)
-          quickOptions(['New'].concat(chargeLimitNames), {
-            title: 'Create New Custom Climate or Edit Existing',
-            onOptionSelect: (opt) => {
-              loadChargeLimitConfig(
-                opt !== 'New' ? Object.values(config.chargeLimits).filter((x) => x.name === opt)[0] : undefined,
-              )
-            },
-          })
-        },
-      },
       customClimates: {
         type: 'clickable',
         label: 'Optional Custom Climates',
@@ -550,7 +531,7 @@ export async function loadWidgetConfigScreen() {
       },
       chargingRemotePollPeriod: {
         type: 'numberValue',
-        label: 'Remote Car Charging Poll Period',
+        label: 'Remote Car Active Poll Period',
         isRequired: true,
       },
       nightStandardPollPeriod: {
@@ -565,7 +546,7 @@ export async function loadWidgetConfigScreen() {
       },
       nightChargingRemotePollPeriod: {
         type: 'numberValue',
-        label: 'Night Remote Car Charging Poll Period',
+        label: 'Night Remote Car Active Poll Period',
         isRequired: true,
       },
     },
